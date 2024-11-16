@@ -1,23 +1,64 @@
-import { createContext, useState, useEffect, useContext } from "react";
+import {
+  createContext,
+  useState,
+  useEffect,
+  useContext,
+  useReducer,
+} from "react";
 
 const CitiesContext = createContext();
 
+function reducer(currState, action) {
+  switch (action.type) {
+    case "loading":
+      return { ...currState, isLoading: true };
+    case "cities/loaded":
+      return { ...currState, isLoading: false, cities: action.payload };
+    case "city/loaded":
+      return { ...currState, isLoading: false, currentCity: action.payload };
+    case "city/created":
+      return {
+        ...currState,
+        cities: [...currState.cities, action.payload],
+        currentCity: action.payload,
+      };
+    case "city/deleted":
+      return {
+        ...currState,
+        isLoading: false,
+        cities: currState.cities.filter((city) => city.id !== action.payload),
+        currentCity: {},
+      };
+    case "rejected":
+      return { ...currState, isLoading: false, err: action.payload };
+
+    default:
+      throw new Error("Unknown Action Type");
+  }
+}
+
 function CitiesProvider({ children }) {
-  const [cities, setCities] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [currentCity, setCurrentCity] = useState({});
+  const initialState = {
+    cities: [],
+    isLoading: false,
+    currentCity: {},
+    error: "",
+  };
+  const [cityState, dispatch] = useReducer(reducer, initialState);
+  const { cities, isLoading, currentCity, error } = cityState;
 
   useEffect(function () {
     async function fetchCities() {
       try {
-        setIsLoading(true);
+        dispatch({ type: "loading" });
         const res = await fetch(`http://localhost:9000/cities`);
         const data = await res.json();
-        setCities(data);
-      } catch (err) {
-        alert("Error Loading the Data");
-      } finally {
-        setIsLoading(false);
+        dispatch({ type: "cities/loaded", payload: data });
+      } catch {
+        dispatch({
+          type: "rejected",
+          payload: "There was error in loading the data",
+        });
       }
     }
     fetchCities();
@@ -25,20 +66,19 @@ function CitiesProvider({ children }) {
 
   async function getCity(id) {
     try {
-      setIsLoading(true);
+      if (Number(id) === currentCity.id) return;
+      dispatch({ type: "loading" });
       const res = await fetch(`http://localhost:9000/cities/${id}`);
       const data = await res.json();
-      setCurrentCity(data);
-    } catch (err) {
-      alert("Error Loading the Data");
-    } finally {
-      setIsLoading(false);
+      dispatch({ type: "city/loaded", payload: data });
+    } catch {
+      dispatch({ type: "rejected", payload: "Error Loading the Data" });
     }
   }
 
   async function createCity(newCity) {
     try {
-      setIsLoading(true);
+      dispatch({ type: "loading" });
       const res = await fetch(`http://localhost:9000/cities`, {
         method: `POST`,
         body: JSON.stringify(newCity),
@@ -47,25 +87,21 @@ function CitiesProvider({ children }) {
         },
       });
       const data = await res.json();
-      setCities((cities) => [...cities, data]);
-    } catch (err) {
-      alert("Error on Creating the City");
-    } finally {
-      setIsLoading(false);
+      dispatch({ type: "city/created", payload: data });
+    } catch {
+      dispatch({ type: "rejected", payload: "Error on Creating the City" });
     }
   }
 
   async function deleteCity(id) {
     try {
-      setIsLoading(true);
+      dispatch({ type: "loading" });
       await fetch(`http://localhost:9000/cities/${id}`, {
         method: `DELETE`,
       });
-      setCities((cities) => cities.filter((city) => city.id !== id));
-    } catch (err) {
-      alert("Error on Deleting the Data");
-    } finally {
-      setIsLoading(false);
+      dispatch({ type: "city/deleted", payload: id });
+    } catch {
+      dispatch({ type: "rejected", payload: "Error on Deleting the Data" });
     }
   }
   return (
@@ -74,6 +110,7 @@ function CitiesProvider({ children }) {
         cities,
         isLoading,
         currentCity,
+        error,
         getCity,
         createCity,
         deleteCity,
